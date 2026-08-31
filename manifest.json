@@ -1,6 +1,6 @@
 {
-  "name": "GR's Iron Log",
-  "short_name": "Iron Log",
+  "name": "Ganeshraja Workout Log",
+  "short_name": "Workout Log",
   "description": "Track every set. Beat your last session.",
   "start_url": "./index.html",
   "scope": "./",
