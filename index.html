@@ -407,7 +407,7 @@
   .progress-hero p{margin:5px 0 0;color:var(--muted);font-size:.78rem;max-width:270px;}
   .trend-badge{min-width:62px;text-align:center;padding:7px 9px;border-radius:999px;background:#e5ebf5;color:var(--text);font-size:.76rem;font-weight:800;white-space:nowrap;}
   .trend-badge.positive{background:#e5f4eb;color:#17653d}.trend-badge.negative{background:#f9e8e6;color:#96362e}
-  .progress-controls{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}.progress-controls label{font-size:.72rem}.progress-controls label:first-child{grid-column:1/-1}
+  .progress-controls{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}.progress-controls label{font-size:.72rem;min-width:0}
   .progress-kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;margin:10px 0 16px}.kpi{background:#fff;border:1px solid var(--border-soft);border-radius:10px;padding:12px;box-shadow:0 2px 8px rgba(11,36,71,.04)}
   .kpi-label{display:block;font-size:.65rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted-2);font-weight:700;margin-bottom:4px}.kpi-value{font-size:1.15rem;font-weight:800;color:var(--text);font-variant-numeric:tabular-nums}.kpi-sub{display:block;margin-top:2px;font-size:.67rem;color:var(--muted-2)}
   .chart-toolbar{display:flex;align-items:center;justify-content:space-between;margin:4px 0 7px;font-size:.78rem;font-weight:700;color:var(--text)}.chart-action{border:0;background:transparent;color:var(--muted);font-size:.7rem;padding:4px 0;font-weight:600}
@@ -415,7 +415,7 @@
   .chart-dot{cursor:pointer;transition:r .15s ease}.chart-tooltip{position:fixed;z-index:20;pointer-events:none;background:#0b2447;color:#fff;padding:7px 9px;border-radius:7px;font-size:.68rem;box-shadow:0 6px 20px rgba(0,0,0,.18)}
   .progress-insights{margin-top:12px;display:grid;gap:7px}.insight{display:flex;gap:9px;align-items:flex-start;background:#fff;border:1px solid var(--border-soft);border-radius:9px;padding:9px 10px;font-size:.74rem;color:var(--muted)}.insight strong{color:var(--text)}.insight-icon{font-weight:900;color:var(--accent);width:18px;text-align:center}
   .progress-recent{margin-top:14px}.recent-title{font-size:.76rem;font-weight:800;color:var(--text);margin-bottom:7px}.recent-row{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:8px 0;border-top:1px solid var(--border-soft);font-size:.72rem}.recent-row .date{color:var(--muted)}.recent-row .load{font-weight:800;color:var(--text)}.recent-row .vol{color:var(--muted-2);font-variant-numeric:tabular-nums}
-  @media(min-width:480px){.progress-kpis{grid-template-columns:repeat(4,1fr)}.progress-controls{grid-template-columns:1.1fr 1fr 1fr}.progress-controls label:first-child{grid-column:auto}}
+  @media(min-width:480px){.progress-kpis{grid-template-columns:repeat(4,1fr)}.progress-controls{display:grid;grid-template-columns:1.1fr 1fr 1fr;gap:10px}.progress-controls label:first-child{grid-column:1/-1}}
 
 </style>
 </head>
@@ -563,23 +563,9 @@
       <div class="trend-badge" id="progressTrendBadge">—</div>
     </div>
     <div class="progress-controls">
-    <label>Muscle group
-      <select id="progressPart">
-        <option value="">Select...</option>
-        <option>Chest & Triceps</option>
-        <option>Back & Biceps</option>
-        <option>Legs</option>
-        <option>Shoulders & Forearms</option>
-        <option>Treadmill / Cardio</option>
-        <option>Shoulders/Traps/Triceps</option>
-        <option>Back/Rear Delts</option>
-        <option>Chest/Biceps</option>
-        <option>Other</option>
-      </select>
-    </label>
     <label>Exercise
       <select id="progressExercise">
-        <option value="">Select a muscle group first</option>
+        <option value="">Select an exercise</option>
       </select>
     </label>
     <label>Metric
@@ -599,7 +585,7 @@
     </div>
     <div id="progressKpis" class="progress-kpis"></div>
     <div class="chart-toolbar"><span id="progressChartCaption">Performance trend</span><button type="button" class="chart-action" id="progressResetBtn">Reset view</button></div>
-    <div id="progressChartWrap" class="progress-chart-wrap"><div class="empty">Select a muscle group and exercise to see your progress.</div></div>
+    <div id="progressChartWrap" class="progress-chart-wrap"><div class="empty">Select an exercise to see your progress.</div></div>
     <div id="progressInsights" class="progress-insights"></div>
     <div id="progressRecent" class="progress-recent"></div>
   </div>
@@ -897,6 +883,7 @@ document.getElementById('backToMainBtn').addEventListener('click', () => {
 document.getElementById('openProgressBtn').addEventListener('click', () => {
   document.getElementById('mainView').style.display = 'none';
   document.getElementById('progressView').style.display = 'block';
+  updateProgressExerciseOptions();
   window.scrollTo(0,0);
 });
 
@@ -907,47 +894,78 @@ document.getElementById('backToMainFromProgressBtn').addEventListener('click', (
 });
 
 function updateProgressExerciseOptions(){
-  const part = document.getElementById('progressPart').value;
   const select = document.getElementById('progressExercise');
-  if(!part){
-    select.innerHTML = '<option value="">Select a muscle group first</option>';
-    return;
-  }
-  const preset = PRESET_EXERCISES[part] || [];
-  const historical = loadEntries().filter(e => e.part === part).map(e => e.exercise);
-  const combined = [...new Set([...preset, ...historical])];
-  select.innerHTML = '<option value="">Select an exercise</option>' +
-    combined.map(n => `<option value="${n.replace(/"/g,'&quot;')}">${n}</option>`).join('');
+  const currentVal = select.value;
+
+  // map each exercise to the muscle group it's associated with (presets first, then anything custom logged)
+  const exerciseToPart = {};
+  Object.keys(PRESET_EXERCISES).forEach(part => {
+    PRESET_EXERCISES[part].forEach(ex => {
+      if(!(ex in exerciseToPart)) exerciseToPart[ex] = part;
+    });
+  });
+  loadEntries().forEach(e => {
+    if(!(e.exercise in exerciseToPart)) exerciseToPart[e.exercise] = e.part;
+  });
+
+  const byPart = {};
+  Object.keys(exerciseToPart).forEach(ex => {
+    const p = exerciseToPart[ex];
+    if(!byPart[p]) byPart[p] = [];
+    byPart[p].push(ex);
+  });
+
+  const partOrder = Object.keys(PRESET_EXERCISES);
+  let html = '<option value="">Select an exercise</option>';
+  partOrder.forEach(part => {
+    if(!byPart[part] || byPart[part].length === 0) return;
+    const opts = byPart[part].sort().map(ex => `<option value="${ex.replace(/"/g,'&quot;')}">${ex}</option>`).join('');
+    html += `<optgroup label="${part}">${opts}</optgroup>`;
+  });
+
+  select.innerHTML = html;
+  if(currentVal && exerciseToPart[currentVal] !== undefined) select.value = currentVal;
 }
 
 function estimate1RM(weight,reps){return (!weight||!reps)?0:(reps===1?weight:weight*(1+reps/30));}
 function formatMetricValue(v,m){return m==='volume'?Math.round(v).toLocaleString()+' kg':v.toFixed(1)+' kg';}
 function renderProgressChart(){
-  const part=document.getElementById('progressPart').value, exercise=document.getElementById('progressExercise').value, metric=document.getElementById('progressMetric').value, period=document.getElementById('progressPeriod').value;
+  const exercise=document.getElementById('progressExercise').value, metric=document.getElementById('progressMetric').value, period=document.getElementById('progressPeriod').value;
   const wrap=document.getElementById('progressChartWrap'), kpis=document.getElementById('progressKpis'), insights=document.getElementById('progressInsights'), recent=document.getElementById('progressRecent'), title=document.getElementById('progressHeroTitle'), sub=document.getElementById('progressHeroSub'), badge=document.getElementById('progressTrendBadge');
-  if(!part||!exercise){title.textContent='Progress at a glance';sub.textContent='Choose an exercise to unlock your performance analytics.';badge.textContent='—';badge.className='trend-badge';kpis.innerHTML=insights.innerHTML=recent.innerHTML='';wrap.innerHTML='<div class="empty">Select a muscle group and exercise to see your progress.</div>';return;}
-  let entries=loadEntries().filter(e=>e.part===part&&e.exercise===exercise);
+  if(!exercise){title.textContent='Progress at a glance';sub.textContent='Choose an exercise to unlock your performance analytics.';badge.textContent='—';badge.className='trend-badge';kpis.innerHTML=insights.innerHTML=recent.innerHTML='';wrap.innerHTML='<div class="empty">Select an exercise to see your progress.</div>';return;}
+  let entries=loadEntries().filter(e=>e.exercise===exercise);
   if(period!=='all'){const cut=new Date();cut.setHours(0,0,0,0);cut.setDate(cut.getDate()-Number(period));entries=entries.filter(e=>new Date(e.date+'T00:00:00')>=cut);}
   entries.sort((a,b)=>a.date.localeCompare(b.date));
   if(!entries.length){title.textContent=exercise;sub.textContent='No data in the selected period.';badge.textContent='No data';badge.className='trend-badge';kpis.innerHTML=insights.innerHTML=recent.innerHTML='';wrap.innerHTML=`<div class="empty">No logged sets for ${exercise} in this period.</div>`;return;}
-  const byDate={};entries.forEach(e=>(byDate[e.date]??=[]).push(e));const dates=Object.keys(byDate).sort();
+  const byDate={};entries.forEach(e=>{if(!byDate[e.date])byDate[e.date]=[];byDate[e.date].push(e);});const dates=Object.keys(byDate).sort();
   const points=dates.map(date=>{const a=byDate[date];let value;if(metric==='maxWeight')value=Math.max(...a.map(i=>+i.weight||0));else if(metric==='volume')value=a.reduce((s,i)=>s+entryVolume(i),0);else value=Math.max(...a.map(i=>estimate1RM(+i.weight||0,+i.reps||0)));return{date,value};});
-  const first=points[0].value,last=points.at(-1).value,pct=first?(last-first)/first*100:0,totalVolume=entries.reduce((s,i)=>s+entryVolume(i),0),avgReps=entries.reduce((s,i)=>s+(+i.reps||0),0)/entries.length,sessionCount=dates.length;
+  const first=points[0].value,last=points[points.length-1].value,pct=first?(last-first)/first*100:0,totalVolume=entries.reduce((s,i)=>s+entryVolume(i),0),avgReps=entries.reduce((s,i)=>s+(+i.reps||0),0)/entries.length,sessionCount=dates.length;
   const best=entries.reduce((b,i)=>entryVolume(i)>entryVolume(b||i)?i:b,null),bestMetric=Math.max(...entries.map(i=>metric==='maxWeight'?+i.weight||0:metric==='volume'?entryVolume(i):estimate1RM(+i.weight||0,+i.reps||0)));
-  title.textContent=exercise;sub.textContent=`${part} • ${sessionCount} session${sessionCount===1?'':'s'} tracked`;badge.textContent=(pct>=0?'+':'')+pct.toFixed(1)+'%';badge.className='trend-badge '+(pct>0?'positive':pct<0?'negative':'');
+  title.textContent=exercise;sub.textContent=`${sessionCount} session${sessionCount===1?'':'s'} tracked`;badge.textContent=(pct>=0?'+':'')+pct.toFixed(1)+'%';badge.className='trend-badge '+(pct>0?'positive':pct<0?'negative':'');
   const ml=metric==='maxWeight'?'Best weight':metric==='volume'?'Best session volume':'Best estimated 1RM';kpis.innerHTML=`<div class="kpi"><span class="kpi-label">Current</span><span class="kpi-value">${formatMetricValue(last,metric)}</span><span class="kpi-sub">latest session</span></div><div class="kpi"><span class="kpi-label">${ml}</span><span class="kpi-value">${formatMetricValue(bestMetric,metric)}</span><span class="kpi-sub">personal best</span></div><div class="kpi"><span class="kpi-label">Total volume</span><span class="kpi-value">${Math.round(totalVolume).toLocaleString()} kg</span><span class="kpi-sub">sets in view</span></div><div class="kpi"><span class="kpi-label">Avg reps</span><span class="kpi-value">${avgReps.toFixed(1)}</span><span class="kpi-sub">per logged set</span></div>`;
   const W=420,H=225,L=42,R=16,T=22,B=34,cw=W-L-R,ch=H-T-B,rng=Math.max(...points.map(p=>p.value))-Math.min(...points.map(p=>p.value))||Math.max(last*.12,1),mn=Math.max(0,Math.min(...points.map(p=>p.value))-rng*.18),mx=Math.max(...points.map(p=>p.value))+rng*.12,step=points.length>1?cw/(points.length-1):0;
-  const coords=points.map((p,i)=>({x:L+(points.length>1?i*step:cw/2),y:T+ch-((p.value-mn)/(mx-mn))*ch,...p}));const path=coords.map((c,i)=>(i?'L':'M')+c.x.toFixed(1)+','+c.y.toFixed(1)).join(' '),area=`M${coords[0].x},${T+ch} `+coords.map(c=>`L${c.x},${c.y}`).join(' ')+` L${coords.at(-1).x},${T+ch} Z`,sd=d=>new Date(d+'T00:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
+  const coords=points.map((p,i)=>({x:L+(points.length>1?i*step:cw/2),y:T+ch-((p.value-mn)/(mx-mn))*ch,...p}));const path=coords.map((c,i)=>(i?'L':'M')+c.x.toFixed(1)+','+c.y.toFixed(1)).join(' '),area=`M${coords[0].x},${T+ch} `+coords.map(c=>`L${c.x},${c.y}`).join(' ')+` L${coords[coords.length-1].x},${T+ch} Z`,sd=d=>new Date(d+'T00:00:00').toLocaleDateString(undefined,{month:'short',day:'numeric'});
   const grid=[0,.25,.5,.75,1].map(f=>{const y=T+ch-f*ch,v=mn+f*(mx-mn);return`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="#e5eaf2"/><text x="${L-7}" y="${y+3}" text-anchor="end" class="chart-point-label">${metric==='volume'?Math.round(v).toLocaleString():v.toFixed(0)}</text>`}).join(''),ls=coords.length>6?Math.ceil(coords.length/6):1,dots=coords.map((c,i)=>`<circle class="chart-dot" data-date="${c.date}" data-value="${c.value}" cx="${c.x}" cy="${c.y}" r="3.8" fill="#123a6b" stroke="#fff" stroke-width="2"/>${i%ls===0?`<text x="${c.x}" y="${H-9}" text-anchor="middle" class="chart-point-label">${sd(c.date)}</text>`:''}`).join('');
   wrap.innerHTML=`<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="progressArea" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#123a6b" stop-opacity=".18"/><stop offset="100%" stop-color="#123a6b" stop-opacity="0"/></linearGradient></defs>${grid}<path d="${area}" fill="url(#progressArea)"/><path d="${path}" fill="none" stroke="#123a6b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>${dots}</svg>`;
-  let tip=document.getElementById('progressTooltip');if(tip)tip.remove();tip=document.createElement('div');tip.className='chart-tooltip';tip.id='progressTooltip';document.body.appendChild(tip);wrap.querySelectorAll('.chart-dot').forEach(d=>{d.addEventListener('pointerenter',e=>{tip.textContent=`${sd(d.dataset.date)} • ${formatMetricValue(+d.dataset.value,metric)}`;tip.style.display='block';tip.style.left=e.clientX+12+'px';tip.style.top=e.clientY-38+'px'});d.addEventListener('pointermove',e=>{tip.style.left=e.clientX+12+'px';tip.style.top=e.clientY-38+'px'});d.addEventListener('pointerleave',()=>tip.style.display='none')});
+  let tip=document.getElementById('progressTooltip');if(tip)tip.remove();tip=document.createElement('div');tip.className='chart-tooltip';tip.id='progressTooltip';document.body.appendChild(tip);
+  let tipHideTimer=null;
+  function showTip(d,x,y){clearTimeout(tipHideTimer);tip.textContent=`${sd(d.dataset.date)} • ${formatMetricValue(+d.dataset.value,metric)}`;tip.style.display='block';tip.style.left=x+12+'px';tip.style.top=y-38+'px';tipHideTimer=setTimeout(()=>{tip.style.display='none';},2200);}
+  wrap.querySelectorAll('.chart-dot').forEach(d=>{
+    d.addEventListener('pointerenter',e=>showTip(d,e.clientX,e.clientY));
+    d.addEventListener('pointermove',e=>{tip.style.left=e.clientX+12+'px';tip.style.top=e.clientY-38+'px';});
+    d.addEventListener('pointerleave',()=>{tip.style.display='none';});
+    d.addEventListener('pointerdown',e=>{e.stopPropagation();showTip(d,e.clientX,e.clientY);});
+  });
+  if(!window.__progressTipDocListener){
+    window.__progressTipDocListener = true;
+    document.addEventListener('pointerdown',(e)=>{
+      const t = document.getElementById('progressTooltip');
+      if(t && (!e.target.classList || !e.target.classList.contains('chart-dot'))){ t.style.display='none'; }
+    });
+  }
   const direction=pct>1?'improving':pct<-1?'declining':'stable';insights.innerHTML=`<div class="insight"><span class="insight-icon">↗</span><span><strong>Trend:</strong> performance is <strong>${direction}</strong> by ${Math.abs(pct).toFixed(1)}% across this view.</span></div><div class="insight"><span class="insight-icon">★</span><span><strong>Best set:</strong> ${best?best.weight+' kg × '+best.reps+' reps • '+Math.round(entryVolume(best)).toLocaleString()+' kg volume':'—'}</span></div>`;
   recent.innerHTML='<div class="recent-title">Recent sessions</div>'+[...entries].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,5).map(e=>`<div class="recent-row"><span class="date">${sd(e.date)}</span><span class="load">${e.weight} kg × ${e.reps}</span><span class="vol">${Math.round(entryVolume(e)).toLocaleString()} kg</span></div>`).join('');
 }
-document.getElementById('progressPart').addEventListener('change', () => {
-  updateProgressExerciseOptions();
-  renderProgressChart();
-});
 document.getElementById('progressExercise').addEventListener('change', renderProgressChart);
 document.getElementById('progressMetric').addEventListener('change', renderProgressChart);
 document.getElementById('progressPeriod').addEventListener('change', renderProgressChart);
