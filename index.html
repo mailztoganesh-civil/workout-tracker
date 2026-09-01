@@ -84,6 +84,15 @@
     font-size:0.8rem;
     margin-bottom:16px;
   }
+  .form-error{
+    background:#fdeceb;
+    border:1px solid #e3a49c;
+    color:#a4372e;
+    padding:9px 12px;
+    border-radius:6px;
+    font-size:0.83rem;
+    font-weight:500;
+  }
 
   /* ---- Cards ---- */
   .card{
@@ -209,13 +218,9 @@
     font-weight:500;
   }
   .field-row{
-    display:grid;
-    grid-template-columns:1fr 1fr;
-    gap:10px;
-    min-width:0;
-  }
-  .field-row > label{
-    min-width:0;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
   }
 
   input, select{
@@ -249,13 +254,9 @@
   }
 
   .row{
-    display:grid;
-    grid-template-columns:1fr 1fr 1fr;
-    gap:10px;
-    min-width:0;
-  }
-  .row > label{
-    min-width:0;
+    display:flex;
+    flex-direction:column;
+    gap:14px;
   }
 
   button{
@@ -428,6 +429,7 @@
     </label>
   </div>
 
+  <div id="formError" class="form-error" style="display:none;"></div>
   <button type="submit">Add entry</button>
 </form>
 
@@ -589,7 +591,9 @@ function saveEntries(entries){
   }catch(e){
     storageWorks = false;
     memoryFallback = entries;
-    alert('Saved for this session only — this browser is blocking permanent storage for local files. Open this page from a web address to make entries save permanently.');
+    const banner = document.getElementById('storageBanner');
+    banner.style.display = 'block';
+    banner.textContent = 'Saved for this session only — this browser is blocking permanent storage for local files. Open this page from a web address to make entries save permanently.';
   }
 }
 
@@ -915,6 +919,18 @@ document.getElementById('historyDateFilter').addEventListener('change', render);
 
 document.getElementById('entryForm').addEventListener('submit', (e) => {
   e.preventDefault();
+  const errorBox = document.getElementById('formError');
+  errorBox.style.display = 'none';
+  errorBox.textContent = '';
+
+  function showError(msg){
+    errorBox.textContent = msg;
+    errorBox.style.display = 'block';
+    if(typeof errorBox.scrollIntoView === 'function'){
+      try{ errorBox.scrollIntoView({ behavior: 'smooth', block: 'center' }); }catch(e){}
+    }
+  }
+
   try{
     const date = document.getElementById('date').value;
     const part = document.getElementById('part').value;
@@ -926,12 +942,12 @@ document.getElementById('entryForm').addEventListener('submit', (e) => {
     const reps = parseInt(document.getElementById('reps').value, 10);
     const sets = parseInt(document.getElementById('sets').value, 10);
 
-    if(!date){ alert('Please pick a date.'); return; }
-    if(!part){ alert('Please select a muscle group.'); return; }
-    if(!exercise){ alert('Please select or type an exercise name.'); return; }
-    if(isNaN(weight)){ alert('Please enter a valid weight.'); return; }
-    if(isNaN(reps)){ alert('Please enter a valid number of reps.'); return; }
-    if(isNaN(sets)){ alert('Please enter a valid number of sets.'); return; }
+    if(!date){ showError('Please pick a date.'); return; }
+    if(!part){ showError('Please select a muscle group.'); return; }
+    if(!exercise){ showError('Please select or type an exercise name.'); return; }
+    if(isNaN(weight)){ showError('Please enter a valid weight.'); return; }
+    if(isNaN(reps)){ showError('Please enter a valid number of reps.'); return; }
+    if(isNaN(sets)){ showError('Please enter a valid number of sets.'); return; }
 
     const entry = { id: uid(), date, part, exercise, weight, reps, sets };
     const entries = loadEntries();
@@ -946,7 +962,7 @@ document.getElementById('entryForm').addEventListener('submit', (e) => {
     updateExerciseOptions(exercise);
     showPreviousSession();
   }catch(err){
-    alert('Something went wrong adding the entry: ' + err.message);
+    showError('Something went wrong adding the entry: ' + err.message);
   }
 });
 
@@ -969,6 +985,7 @@ document.getElementById('importFile').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if(!file) return;
   const reader = new FileReader();
+  const banner = document.getElementById('storageBanner');
   reader.onload = () => {
     try{
       const imported = JSON.parse(reader.result);
@@ -978,10 +995,18 @@ document.getElementById('importFile').addEventListener('change', (e) => {
         const merged = existing.concat(imported.filter(x => !existingIds.has(x.id)));
         saveEntries(merged);
         render();
-        alert('Backup imported.');
+        banner.style.display = 'block';
+        banner.style.background = '#e9f5ec';
+        banner.style.borderColor = '#8fc9a0';
+        banner.style.color = '#1f6b39';
+        banner.textContent = 'Backup imported successfully.';
       }
     }catch(err){
-      alert('Could not read that file.');
+      banner.style.display = 'block';
+      banner.style.background = '#fdeceb';
+      banner.style.borderColor = '#e3a49c';
+      banner.style.color = '#a4372e';
+      banner.textContent = 'Could not read that backup file.';
     }
   };
   reader.readAsText(file);
