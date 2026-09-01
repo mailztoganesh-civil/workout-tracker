@@ -313,6 +313,40 @@
   .prev-row .ex{ color:var(--text); }
   .prev-row .stat{ color:var(--muted); font-variant-numeric:tabular-nums; }
 
+  .today-panel{
+    border-left:3px solid #1f7a4c;
+  }
+  .today-header{
+    font-family:'Oswald',sans-serif;
+    font-weight:600;
+    font-size:0.95rem;
+    color:#1f7a4c;
+    margin:0 0 10px 0;
+  }
+  .today-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:6px 0;
+    border-bottom:1px solid var(--border-soft);
+    font-size:0.88rem;
+  }
+  .today-row:last-child{ border-bottom:none; }
+  .today-row .set-num{
+    color:#1f7a4c;
+    font-weight:600;
+    margin-right:8px;
+  }
+  .today-row .stat{ color:var(--muted); font-variant-numeric:tabular-nums; }
+  .today-row .del-set{
+    background:none;
+    border:none;
+    color:var(--danger);
+    font-size:0.85rem;
+    padding:0 0 0 10px;
+    cursor:pointer;
+  }
+
   /* ---- History log ---- */
   .day-group{ margin-bottom:16px; }
   .day-group:last-child{ margin-bottom:0; }
@@ -424,14 +458,16 @@
     <label>Reps
       <input type="text" inputmode="numeric" id="reps" placeholder="0">
     </label>
-    <label>Sets
-      <input type="text" inputmode="numeric" id="sets" value="1">
-    </label>
   </div>
 
   <div id="formError" class="form-error" style="display:none;"></div>
   <button type="submit">Add entry</button>
 </form>
+
+<div id="todayPanel" class="today-panel card" style="display:none;">
+  <div class="today-header"></div>
+  <div class="today-body"></div>
+</div>
 
 <div id="prevPanel" class="prev-panel card" style="display:none;">
   <div class="prev-header"></div>
@@ -606,6 +642,18 @@ function formatDateLabel(dateStr){
   return d.toLocaleDateString(undefined, { weekday:'short', year:'numeric', month:'short', day:'numeric' });
 }
 
+function formatEntryStats(item){
+  // backward compatible: older entries may still have a sets field
+  if(item.sets && item.sets > 1){
+    return `${item.sets} × ${item.reps} @ ${item.weight}kg`;
+  }
+  return `${item.reps} reps @ ${item.weight}kg`;
+}
+
+function entryVolume(item){
+  return item.weight * item.reps * (item.sets || 1);
+}
+
 let historyViewMode = 'muscle'; // 'muscle' or 'date'
 
 function populateHistoryDateOptions(){
@@ -659,7 +707,7 @@ function render(){
           <span class="part">${item.part}</span>
         </div>
         <div class="entry-stats">
-          ${item.sets} × ${item.reps} @ ${item.weight}kg
+          ${formatEntryStats(item)}
         </div>
         <button class="del" data-id="${item.id}">✕</button>
       `;
@@ -722,6 +770,43 @@ document.getElementById('exerciseSelect').addEventListener('change', () => {
   }
 });
 
+function renderTodayPanel(){
+  const part = document.getElementById('part').value;
+  const date = document.getElementById('date').value;
+  const panel = document.getElementById('todayPanel');
+
+  if(!part || !date){
+    panel.style.display = 'none';
+    return;
+  }
+
+  const entries = loadEntries().filter(e => e.part === part && e.date === date);
+  if(entries.length === 0){
+    panel.style.display = 'none';
+    return;
+  }
+
+  panel.style.display = 'block';
+  panel.querySelector('.today-header').textContent = `Today's ${part} sets`;
+  panel.querySelector('.today-body').innerHTML = entries.map((item, i) => `
+    <div class="today-row">
+      <span><span class="set-num">Set ${i+1}</span>${item.exercise}</span>
+      <span class="stat">${formatEntryStats(item)}</span>
+      <button class="del-set" data-id="${item.id}">✕</button>
+    </div>
+  `).join('');
+
+  panel.querySelectorAll('.del-set').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.getAttribute('data-id');
+      const remaining = loadEntries().filter(e => e.id !== id);
+      saveEntries(remaining);
+      renderTodayPanel();
+      showPreviousSession();
+    });
+  });
+}
+
 function showPreviousSession(){
   const part = document.getElementById('part').value;
   const panel = document.getElementById('prevPanel');
@@ -745,7 +830,7 @@ function showPreviousSession(){
   panel.querySelector('.prev-body').innerHTML = lastEntries.map(item => `
     <div class="prev-row">
       <span class="ex">${item.exercise}</span>
-      <span class="stat">${item.sets} × ${item.reps} @ ${item.weight}kg</span>
+      <span class="stat">${formatEntryStats(item)}</span>
     </div>
   `).join('');
 }
@@ -753,8 +838,12 @@ function showPreviousSession(){
 document.getElementById('part').addEventListener('change', () => {
   updateExerciseOptions();
   showPreviousSession();
+  renderTodayPanel();
 });
-document.getElementById('date').addEventListener('change', showPreviousSession);
+document.getElementById('date').addEventListener('change', () => {
+  showPreviousSession();
+  renderTodayPanel();
+});
 
 document.getElementById('openHistoryBtn').addEventListener('click', () => {
   document.getElementById('mainView').style.display = 'none';
@@ -826,7 +915,7 @@ function renderProgressChart(){
     if(metric === 'maxWeight'){
       value = Math.max(...items.map(i => i.weight));
     }else{
-      value = items.reduce((sum, i) => sum + (i.weight * i.reps * i.sets), 0);
+      value = items.reduce((sum, i) => sum + entryVolume(i), 0);
     }
     return { date, value };
   });
@@ -940,27 +1029,23 @@ document.getElementById('entryForm').addEventListener('submit', (e) => {
       : exerciseSelectVal.trim();
     const weight = parseFloat(document.getElementById('weight').value);
     const reps = parseInt(document.getElementById('reps').value, 10);
-    const sets = parseInt(document.getElementById('sets').value, 10);
 
     if(!date){ showError('Please pick a date.'); return; }
     if(!part){ showError('Please select a muscle group.'); return; }
     if(!exercise){ showError('Please select or type an exercise name.'); return; }
     if(isNaN(weight)){ showError('Please enter a valid weight.'); return; }
     if(isNaN(reps)){ showError('Please enter a valid number of reps.'); return; }
-    if(isNaN(sets)){ showError('Please enter a valid number of sets.'); return; }
 
-    const entry = { id: uid(), date, part, exercise, weight, reps, sets };
+    const entry = { id: uid(), date, part, exercise, weight, reps };
     const entries = loadEntries();
     entries.push(entry);
     saveEntries(entries);
 
     document.getElementById('exerciseCustom').value = '';
-    document.getElementById('weight').value = '';
-    document.getElementById('reps').value = '';
-    document.getElementById('sets').value = '1';
     render();
     updateExerciseOptions(exercise);
     showPreviousSession();
+    renderTodayPanel();
   }catch(err){
     showError('Something went wrong adding the entry: ' + err.message);
   }
